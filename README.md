@@ -1,5 +1,3 @@
-Here’s a `README.md` template for your **Cafe-Management** project. It includes installation steps, project structure, and instructions to run each part of your project using `bun`.
-
 ---
 
 # Cafe-Management
@@ -126,4 +124,3 @@ If you want to run each part manually:
 
 ---
 
-Feel free to modify this README as per your specific project requirements.
