@@ -1,0 +1,22 @@
+{
+  "name": "cafe",
+  "module": "cafe",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "concurrently": "^7.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "dev": "bun run dev:menu",
+    "dev:menu": "node ./menu.js",
+    "dev:backend": "cd backend && bun start",
+    "dev:admin": "cd frontend/admin && bun dev",
+    "dev:user": "cd frontend/user && bun start"
+  },
+  "dependencies": {
+    "inquirer": "^12.1.0"
+  }
+}
