@@ -1,26 +1,86 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UseGuards,
+} from '@nestjs/common';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { UpdateAuthDto } from './dto/update-auth.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { UserService } from 'src/user/user.service';
+import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshJwtAuthGuard } from './guards/refresh.jwt-auth.guard';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
+  constructor(
+    private userService: UserService,
+    private jwtService: JwtService,
+  ) {}
+  async validateUser(username: string, pass: string): Promise<any> {
+    const user = await this.userService.findByUsername(username);
+
+    if (!user) {
+      return null;
+    }
+
+    const isPasswordValid = await bcrypt.compare(pass, user.password); // compares hashed password
+    if (!isPasswordValid) {
+      return null;
+    }
+
+    const { password, ...result } = user;
+    return result;
   }
 
-  findAll() {
-    return `This action returns all auth`;
+  async login(loginDto: { username: string; password: string }) {
+    console.log('Login attempt for username:', loginDto.username); // Log the username
+    const user = await this.validateUser(loginDto.username, loginDto.password);
+
+    if (!user) {
+      console.log('Invalid credentials'); // Log if user is not found or password is incorrect
+      throw new BadRequestException('Invalid credentials');
+    }
+
+    const payload = { email: user.email, sub: user._id };
+    console.log('User validated:', user); // Log the user details
+    return {
+      accessToken: this.jwtService.sign(payload),
+      refreshToken: this.jwtService.sign(payload, { expiresIn: '7d' }),
+    };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
+  @UseGuards(RefreshJwtAuthGuard)
+  async refreshToken(user: any) {
+    const payload = { email: user.email, sub: user.userId };
+    return {
+      accessToken: this.jwtService.sign(payload),
+    };
   }
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
+  async resetPassword(
+    username: string,
+    email: string,
+    newPassword: string,
+  ): Promise<any> {
+    const user = await this.userService.findByUsername(username);
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.email !== email) {
+      throw new BadRequestException('Email does not match');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Use user.id instead of user._id
+    await this.userService.updatePassword(user._id, hashedPassword);
+
+    return { message: 'Password successfully reset' };
   }
 }

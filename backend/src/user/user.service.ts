@@ -1,26 +1,130 @@
-import { Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { InjectModel } from "@nestjs/mongoose";
+import * as bcrypt from "bcrypt";
+import { Model } from "mongoose";
+import {
+  ErrorBuilder,
+  ErrorMethod,
+  RequestAction,
+} from "src/app/common/utils/error.util";
+import { RegisterDTO } from "./dto/register.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
+import { User } from "./schemas/user.schemas";
 @Injectable()
 export class UserService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+  private readonly errorBuilder = new ErrorBuilder("Users");
+
+  constructor(
+    @InjectModel(User.name)
+    private userModel: Model<User>
+  ) {}
+
+  async create(registerDTO: RegisterDTO): Promise<User> {
+    try {
+      const userDoc = new this.userModel(registerDTO);
+      const user = await userDoc.save();
+      return user.toObject();
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ConflictException(
+          this.errorBuilder.build(ErrorMethod.duplicated, {
+            action: RequestAction.create,
+          })
+        );
+      }
+    }
   }
 
-  findAll() {
-    return `This action returns all user`;
+  async findByEmail(email: string): Promise<User> {
+    try {
+      const user = await this.userModel.findOne({ email }).lean();
+      if (!user) {
+        throw new NotFoundException(
+          this.errorBuilder.build(ErrorMethod.notFound)
+        );
+      }
+      return user;
+    } catch (error) {
+      throw error;
+    }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findAll(): Promise<User[]> {
+    const user = await this.userModel.find().lean();
+    return user;
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
+  async findOne(id: string): Promise<User> {
+    try {
+      const user = await this.userModel.findById(id).lean();
+      if (!user) {
+        throw new NotFoundException(
+          this.errorBuilder.build(ErrorMethod.notFound, { id })
+        );
+      }
+      return user;
+    } catch (error) {
+      throw error;
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    const exists = await this.userModel.findById({ _id: id });
+    try {
+      if (!exists) {
+        throw new NotFoundException(
+          this.errorBuilder.build(ErrorMethod.notFound, { id })
+        );
+      }
+
+      // Check if the password is being updated
+      if (updateUserDto.password) {
+        const salt = await bcrypt.genSalt(10);
+        updateUserDto.password = await bcrypt.hash(updateUserDto.password, salt);
+      }
+
+      const options = { new: true };
+      const user = await this.userModel
+        .findByIdAndUpdate(id, updateUserDto, options)
+        .lean();
+      return user;
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ConflictException(
+          this.errorBuilder.build(ErrorMethod.duplicated, {
+            action: RequestAction.update,
+          })
+        );
+      }
+      throw error;
+    }
+  }
+
+  async remove(id: string): Promise<User> {
+    const user = await this.userModel.findByIdAndDelete(id).lean();
+    if (!user) {
+      throw new NotFoundException(
+        this.errorBuilder.build(ErrorMethod.notFound, { id })
+      );
+    }
+    return user;
+  }
+
+  async findByUsername(username: string): Promise<User> {
+    const user = await this.userModel.findOne({ username }).exec();
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    return user;
+  }
+
+  async updatePassword(userId: string, newPassword: string): Promise<User> {
+    return this.userModel
+      .findByIdAndUpdate(userId, { password: newPassword }, { new: true })
+      .exec();
   }
 }
